@@ -209,7 +209,7 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           title: "Transaction updated",
           message: `${recorder} added +${qty} ${product.unit} of ${product.name} to existing record for ${client.name} (Total Qty: ${newQuantity}).`,
           type: NotificationType.transaction,
-          targetRole: "ADMIN",
+          targetRole: null,
         },
       });
     } else {
@@ -245,7 +245,7 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
           title: "New transaction recorded",
           message: `${recorder} recorded ${qty} ${product.unit} of ${product.name} for ${client.name}.`,
           type: NotificationType.transaction,
-          targetRole: "ADMIN",
+          targetRole: null,
         },
       });
     }

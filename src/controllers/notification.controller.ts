@@ -6,10 +6,8 @@ import { Role } from "@prisma/client";
 export const listNotifications = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userRole = req.user?.role || Role.FIELD_SUPERVISOR;
+    const userName = req.user?.name;
 
-    // Role-based notification scoping:
-    // ADMIN sees notifications targeted to ADMIN or general notifications.
-    // FIELD_SUPERVISOR sees notifications targeted to FIELD_SUPERVISOR or general notifications.
     const notifications = await prisma.notification.findMany({
       where: {
         OR: [
@@ -18,19 +16,20 @@ export const listNotifications = async (req: AuthenticatedRequest, res: Response
         ],
       },
       orderBy: { createdAt: "desc" },
-      take: 30,
+      take: 50,
     });
 
-    // Filter by type relevance if targetRole was unspecified
+    // Filter notifications for strict role and user isolation
     const scoped = notifications.filter((n) => {
-      if (n.targetRole) return n.targetRole === userRole;
-      if (userRole === Role.FIELD_SUPERVISOR) {
-        // Field Supervisors do NOT see internal Admin documents/expense management alerts
-        return n.type === "transaction" || n.type === "client" || n.type === "system";
-      }
       if (userRole === Role.ADMIN) {
-        // Admins see all high-level operational activity alerts
         return true;
+      }
+      if (userRole === Role.FIELD_SUPERVISOR) {
+        if (n.targetRole === Role.FIELD_SUPERVISOR) return true;
+        if (userName && n.message) {
+          return n.message.toLowerCase().includes(userName.toLowerCase());
+        }
+        return false;
       }
       return true;
     });
@@ -93,3 +92,40 @@ export const markAllNotificationsRead = async (req: AuthenticatedRequest, res: R
     res.status(500).json({ error: error.message || "Failed to mark notifications as read" });
   }
 };
+
+export const deleteNotification = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    await prisma.notification.delete({
+      where: { id },
+    });
+
+    res.json({ success: true, message: "Notification deleted" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to delete notification" });
+  }
+};
+
+export const deleteAllNotifications = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userRole = req.user?.role || Role.FIELD_SUPERVISOR;
+
+    if (userRole === Role.ADMIN) {
+      await prisma.notification.deleteMany({});
+    } else {
+      await prisma.notification.deleteMany({
+        where: {
+          OR: [
+            { targetRole: Role.FIELD_SUPERVISOR },
+            { targetRole: null },
+          ],
+        },
+      });
+    }
+
+    res.json({ success: true, message: "All notifications deleted" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to delete notifications" });
+  }
+};
+
