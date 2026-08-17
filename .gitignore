@@ -1,0 +1,19 @@
+# Environment variables — never commit secrets
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# File uploads (stored locally, not in git)
+uploads/
+
+# Logs
+*.log
+
+# OS
+.DS_Store

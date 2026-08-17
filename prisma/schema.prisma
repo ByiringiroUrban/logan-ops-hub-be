@@ -1,0 +1,181 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  FIELD_SUPERVISOR
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TransactionStatus {
+  COMPLETED
+  PENDING
+  CANCELLED
+}
+
+enum ExpenseCategory {
+  Transport
+  Fuel
+  Salaries
+  Maintenance
+  Office
+  Communication
+  Other
+}
+
+enum DocumentCategory {
+  Company_Registration @map("Company Registration")
+  Tax_Compliance       @map("Tax Compliance")
+  Environmental_Permit @map("Environmental Permit")
+  Mining_License       @map("Mining License")
+  Client_Contracts     @map("Client Contracts")
+  Other
+}
+
+enum FileType {
+  PDF
+  DOCX
+  XLSX
+  PNG
+  JPG
+}
+
+enum NotificationType {
+  transaction
+  client
+  document
+  expense
+  system
+}
+
+model User {
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         Role       @default(FIELD_SUPERVISOR)
+  phone        String
+  avatarUrl    String?
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  lastLogin    DateTime?
+
+  @@map("users")
+}
+
+model Client {
+  id          String        @id @default(cuid())
+  name        String
+  phone       String
+  email       String?
+  address     String
+  notes       String?
+  createdAt   DateTime      @default(now())
+  Transaction Transaction[]
+
+  @@map("clients")
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  name        String
+  description String
+  unit        String
+  unitPrice   Float
+  status      ProductStatus @default(ACTIVE)
+  Transaction Transaction[]
+
+  @@map("products")
+}
+
+model Transaction {
+  id          String            @id @default(cuid())
+  clientId    String
+  client      Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  quantity    Float
+  unitPrice   Float
+  totalAmount Float
+  date        DateTime          @default(now())
+  notes       String?
+  recordedBy  String
+  status      TransactionStatus @default(COMPLETED)
+
+  @@map("transactions")
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  title       String
+  category    ExpenseCategory
+  amount      Float
+  date        DateTime        @default(now())
+  description String?
+  addedBy     String
+
+  @@map("expenses")
+}
+
+model CompanyDocument {
+  id         String           @id @default(cuid())
+  name       String
+  category   DocumentCategory
+  fileType   FileType
+  sizeKb     Int
+  filePath   String?
+  uploadedBy String
+  uploadedAt DateTime         @default(now())
+
+  @@map("company_documents")
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  actor     String
+  action    String
+  target    String
+  createdAt DateTime @default(now())
+
+  @@map("activities")
+}
+
+model Notification {
+  id         String           @id @default(cuid())
+  title      String
+  message    String
+  createdAt  DateTime         @default(now())
+  read       Boolean          @default(false)
+  type       NotificationType
+  targetRole Role?
+
+  @@map("notifications")
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  email     String
+  otp       String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("password_resets")
+}
