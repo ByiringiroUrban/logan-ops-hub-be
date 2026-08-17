@@ -11,16 +11,30 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:8080";
+const allowedOrigins = [
+  process.env.CORS_ORIGIN,
+  "http://localhost:8080",
+  "http://localhost:5173",
+  "http://localhost:3000",
+].filter(Boolean) as string[];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, Postman)
+      // Allow requests with no origin (mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith(".vercel.app") ||
+        process.env.NODE_ENV !== "production"
+      ) {
+        return callback(null, true);
+      }
       return callback(null, true);
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   })
 );
 
@@ -52,18 +66,31 @@ app.get("/health", (req, res) => {
   res.json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
+// Root API Endpoint
+app.get("/", (req, res) => {
+  res.json({
+    status: "OK",
+    message: "Logan Ops Hub Backend API",
+    health: "/health",
+    api: "/api",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // API Routes
 app.use("/api", apiRoutes);
 
 // Global Error Handler
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`==================================================`);
-  console.log(`🚀 Logan Ops Hub Backend API Server Ready!`);
-  console.log(`📍 Listening on: http://localhost:${PORT}`);
-  console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
-  console.log(`==================================================`);
-});
+if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`==================================================`);
+    console.log(`🚀 Logan Ops Hub Backend API Server Ready!`);
+    console.log(`📍 Listening on: http://localhost:${PORT}`);
+    console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
+    console.log(`==================================================`);
+  });
+}
 
 export default app;

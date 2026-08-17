@@ -11,9 +11,18 @@ import {
 import { authenticateToken, requireRole } from "../middleware/auth";
 import { Role } from "@prisma/client";
 
-const uploadDir = path.join(__dirname, "../../uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+import os from "os";
+
+const uploadDir = process.env.VERCEL
+  ? path.join(os.tmpdir(), "uploads")
+  : path.join(__dirname, "../../uploads");
+
+try {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+} catch (err) {
+  console.warn("[UPLOAD DIR WARN] Could not create upload directory:", err);
 }
 
 const storage = multer.diskStorage({
