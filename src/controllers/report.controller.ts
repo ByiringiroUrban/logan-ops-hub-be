@@ -46,9 +46,9 @@ export const getDashboardAnalytics = async (req: AuthenticatedRequest, res: Resp
   try {
     const range = (req.query.range as string) || "today";
 
-    const todayStr = "2026-08-12";
-    const startOfToday = new Date(`${todayStr}T00:00:00Z`);
-    const endOfToday = new Date(`${todayStr}T23:59:59Z`);
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
     const todaysTrx = await prisma.transaction.findMany({
       where: {
@@ -74,13 +74,17 @@ export const getDashboardAnalytics = async (req: AuthenticatedRequest, res: Resp
     if (range === "today") {
       rangeStart = startOfToday;
     } else if (range === "week") {
-      rangeStart = new Date("2026-08-06T00:00:00Z");
+      const weekStart = new Date(now);
+      const dayOfWeek = (now.getDay() + 6) % 7; // Mon = 0, Sun = 6
+      weekStart.setDate(now.getDate() - dayOfWeek);
+      weekStart.setHours(0, 0, 0, 0);
+      rangeStart = weekStart;
     } else if (range === "month") {
-      rangeStart = new Date("2026-08-01T00:00:00Z");
-      rangeEnd = new Date("2026-08-31T23:59:59Z");
+      rangeStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      rangeEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     } else {
-      rangeStart = new Date("2026-01-01T00:00:00Z");
-      rangeEnd = new Date("2026-12-31T23:59:59Z");
+      rangeStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      rangeEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
     }
 
     const rangeTrx = await prisma.transaction.findMany({
@@ -156,10 +160,10 @@ export const getDashboardAnalytics = async (req: AuthenticatedRequest, res: Resp
     res.json({
       stats: {
         totalClients,
-        todaysTransactionCount: todaysTrx.length,
-        todaysRevenue,
-        todaysExpenses: isSupervisor ? 0 : todaysExpensesSum,
-        todaysQuantity,
+        todaysTransactionCount: range === "today" ? todaysTrx.length : rangeTrx.length,
+        todaysRevenue: range === "today" ? todaysRevenue : rangeTrx.reduce((s, t) => s + t.totalAmount, 0),
+        todaysExpenses: isSupervisor ? 0 : (range === "today" ? todaysExpensesSum : rangeExpenses.reduce((s, e) => s + e.amount, 0)),
+        todaysQuantity: range === "today" ? todaysQuantity : rangeTrx.reduce((s, t) => s + t.quantity, 0),
       },
       revenueSeries,
       productSummary,
