@@ -121,7 +121,7 @@ export const createUser = async (req: AuthenticatedRequest, res: Response): Prom
 export const updateUser = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const id = String(req.params.id);
-    const { name, email, phone, role, status, password } = req.body;
+    const { name, email, phone, role, status, password, avatarUrl } = req.body;
 
     const updateData: any = {};
     if (name) updateData.name = name;
@@ -129,6 +129,7 @@ export const updateUser = async (req: AuthenticatedRequest, res: Response): Prom
     if (phone) updateData.phone = phone;
     if (role) updateData.role = role === "ADMIN" ? Role.ADMIN : Role.FIELD_SUPERVISOR;
     if (status) updateData.status = status === "INACTIVE" ? UserStatus.INACTIVE : UserStatus.ACTIVE;
+    if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl ? String(avatarUrl) : null;
     if (password) updateData.passwordHash = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.update({

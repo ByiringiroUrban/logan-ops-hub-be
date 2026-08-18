@@ -1,9 +1,11 @@
 import { Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import fs from "fs";
 import { prisma } from "../config/prisma";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { sendOtpEmail } from "../config/mailer";
+import { uploadToCloudinary } from "../config/cloudinary";
 
 export const login = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
@@ -165,7 +167,9 @@ export const updateProfile = async (req: AuthenticatedRequest, res: Response): P
 
     if (name) updateData.name = name;
     if (phone) updateData.phone = phone;
-    if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
+    if (avatarUrl !== undefined) {
+      updateData.avatarUrl = avatarUrl ? String(avatarUrl) : null;
+    }
     if (password) {
       updateData.passwordHash = await bcrypt.hash(password, 10);
     }
@@ -196,6 +200,119 @@ export const updateProfile = async (req: AuthenticatedRequest, res: Response): P
   } catch (error: any) {
     console.error(`[AUTH LOG] 💥 Profile update error:`, error);
     res.status(500).json({ error: error.message || "Failed to update profile" });
+  }
+};
+
+export const uploadAvatar = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: "Not authenticated" });
+      return;
+    }
+
+    const file = req.file;
+    if (!file) {
+      res.status(400).json({ error: "No image file provided" });
+      return;
+    }
+
+    let cloudUrl: string | null = null;
+    if (file && fs.existsSync(file.path)) {
+      try {
+        console.log(`[AUTH LOG] 📸 Uploading user avatar to Cloudinary for ${req.user.id}...`);
+        const cloudResult = await uploadToCloudinary(file.path, "logan_avatars");
+        cloudUrl = cloudResult.secure_url;
+      } catch (cloudErr: any) {
+        console.error("[STORAGE ERROR] Cloudinary avatar upload failed:", cloudErr.message);
+        res.status(500).json({ error: cloudErr.message || "Cloudinary upload failed" });
+        return;
+      }
+    }
+
+    if (!cloudUrl) {
+      res.status(500).json({ error: "Failed to generate cloud storage URL for avatar" });
+      return;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { avatarUrl: cloudUrl },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        phone: true,
+        status: true,
+        createdAt: true,
+        lastLogin: true,
+        avatarUrl: true,
+      },
+    });
+
+    try {
+      await prisma.activity.create({
+        data: {
+          actor: updatedUser.name,
+          action: "UPDATED_AVATAR",
+          target: "Profile Photo",
+        },
+      });
+    } catch {
+      /* ignore activity logging error */
+    }
+
+    console.log(`[AUTH LOG] ✅ Avatar updated on Cloudinary: ${cloudUrl}`);
+
+    res.json({
+      user: {
+        ...updatedUser,
+        createdAt: updatedUser.createdAt.toISOString(),
+        lastLogin: updatedUser.lastLogin ? updatedUser.lastLogin.toISOString() : null,
+      },
+      avatarUrl: cloudUrl,
+    });
+  } catch (error: any) {
+    console.error(`[AUTH LOG] 💥 Avatar upload error:`, error);
+    res.status(500).json({ error: error.message || "Failed to upload avatar" });
+  }
+};
+
+export const removeAvatar = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      res.status(401).json({ error: "Not authenticated" });
+      return;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: { avatarUrl: null },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        phone: true,
+        status: true,
+        createdAt: true,
+        lastLogin: true,
+        avatarUrl: true,
+      },
+    });
+
+    console.log(`[AUTH LOG] 🗑️ Avatar removed for user: "${updatedUser.email}"`);
+
+    res.json({
+      user: {
+        ...updatedUser,
+        createdAt: updatedUser.createdAt.toISOString(),
+        lastLogin: updatedUser.lastLogin ? updatedUser.lastLogin.toISOString() : null,
+      },
+    });
+  } catch (error: any) {
+    console.error(`[AUTH LOG] 💥 Remove avatar error:`, error);
+    res.status(500).json({ error: error.message || "Failed to remove avatar" });
   }
 };
 
