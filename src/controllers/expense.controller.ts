@@ -53,6 +53,7 @@ export const createExpense = async (req: AuthenticatedRequest, res: Response): P
         action: "recorded an expense",
         target: expense.title,
       },
+      select: { id: true },
     });
 
     await prisma.notification.create({

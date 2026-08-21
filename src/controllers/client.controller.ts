@@ -69,6 +69,7 @@ export const createClient = async (req: AuthenticatedRequest, res: Response): Pr
         action: "added a new client",
         target: client.name,
       },
+      select: { id: true },
     });
 
     await prisma.notification.create({
@@ -119,6 +120,7 @@ export const updateClient = async (req: AuthenticatedRequest, res: Response): Pr
         action: "updated the client",
         target: client.name,
       },
+      select: { id: true },
     });
 
     res.json({

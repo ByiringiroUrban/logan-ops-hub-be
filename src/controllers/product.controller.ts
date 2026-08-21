@@ -58,6 +58,7 @@ export const createProduct = async (req: AuthenticatedRequest, res: Response): P
           action: "added a new product",
           target: product.name,
         },
+        select: { id: true },
       });
 
       await prisma.notification.create({
@@ -107,6 +108,7 @@ export const updateProduct = async (req: AuthenticatedRequest, res: Response): P
           action: "updated product details",
           target: product.name,
         },
+        select: { id: true },
       });
     } catch {
       /* ignore non-blocking activity log error */
@@ -142,6 +144,7 @@ export const deleteProduct = async (req: AuthenticatedRequest, res: Response): P
           action: "deleted product",
           target: product.name,
         },
+        select: { id: true },
       });
 
       await prisma.notification.create({

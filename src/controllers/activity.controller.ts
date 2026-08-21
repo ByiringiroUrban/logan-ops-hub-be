@@ -16,8 +16,75 @@ function getDateBounds(dateStr?: string): { start: Date; end: Date } {
   return { start, end };
 }
 
+/**
+ * Automatically ensures past days' transaction totals and daily summaries are cleanly archived in Activity History
+ */
+async function ensureDailyClosingArchive(): Promise<void> {
+  try {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+    const pastTransactions = await prisma.transaction.findMany({
+      where: {
+        date: { lt: todayStart },
+        status: { not: "CANCELLED" },
+      },
+      select: {
+        date: true,
+        totalAmount: true,
+        quantity: true,
+      },
+    });
+
+    if (pastTransactions.length === 0) return;
+
+    const dateMap = new Map<string, { count: number; revenue: number; quantity: number; dateObj: Date }>();
+    for (const t of pastTransactions) {
+      const d = t.date;
+      const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const entry = dateMap.get(dStr) || { count: 0, revenue: 0, quantity: 0, dateObj: d };
+      entry.count += 1;
+      entry.revenue += t.totalAmount;
+      entry.quantity += t.quantity;
+      dateMap.set(dStr, entry);
+    }
+
+    for (const [dateStr, val] of dateMap.entries()) {
+      const targetPrefix = `Daily Summary for ${dateStr}`;
+      const existing = await prisma.activity.findFirst({
+        where: {
+          action: "archived daily operations summary",
+          target: { startsWith: targetPrefix },
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (!existing) {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        const closingDate = new Date(y, m - 1, d, 23, 59, 59, 0);
+        await prisma.activity.create({
+          data: {
+            actor: "System Daily Archive",
+            action: "archived daily operations summary",
+            target: `${targetPrefix}: ${val.count} transactions, ${val.revenue.toLocaleString()} RWF revenue (${val.quantity} units)`,
+            createdAt: closingDate,
+          },
+          select: {
+            id: true,
+          },
+        });
+      }
+    }
+  } catch (err: any) {
+    // Non-blocking background archive check
+  }
+}
+
 export const listActivities = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    await ensureDailyClosingArchive();
     const isSupervisor = req.user?.role === "FIELD_SUPERVISOR";
     const userName = req.user?.name;
 
@@ -122,6 +189,7 @@ export const listActivities = async (req: AuthenticatedRequest, res: Response): 
  */
 export const getActivityHistoryDates = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    await ensureDailyClosingArchive();
     const isSupervisor = req.user?.role === "FIELD_SUPERVISOR";
     const userName = req.user?.name;
 

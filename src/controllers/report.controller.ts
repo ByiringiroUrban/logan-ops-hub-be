@@ -44,12 +44,18 @@ export const getReportSummary = async (req: AuthenticatedRequest, res: Response)
 
 export const getDashboardAnalytics = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const range = (req.query.range as string) || "today";
+    const range = (req.query.range as string) || "week";
 
     const now = new Date();
+    // Strict bounds for TODAY (00:00:00.000 to 23:59:59.999 local/server time)
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
     const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
 
+    // Strict bounds for YESTERDAY (for accurate dynamic trend calculation)
+    const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+    const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+
+    // Fetch TODAY's active records (resets to 0 at 00:00 of each new day)
     const todaysTrx = await prisma.transaction.findMany({
       where: {
         date: { gte: startOfToday, lte: endOfToday },
@@ -63,11 +69,39 @@ export const getDashboardAnalytics = async (req: AuthenticatedRequest, res: Resp
       },
     });
 
+    // Fetch YESTERDAY's records for trend calculation
+    const yesterdaysTrx = await prisma.transaction.findMany({
+      where: {
+        date: { gte: startOfYesterday, lte: endOfYesterday },
+        status: { not: "CANCELLED" },
+      },
+    });
+
+    const yesterdaysExpenses = await prisma.expense.findMany({
+      where: {
+        date: { gte: startOfYesterday, lte: endOfYesterday },
+      },
+    });
+
     const totalClients = await prisma.client.count();
     const todaysRevenue = todaysTrx.reduce((s, t) => s + t.totalAmount, 0);
     const todaysExpensesSum = todaysExpenses.reduce((s, e) => s + e.amount, 0);
     const todaysQuantity = todaysTrx.reduce((s, t) => s + t.quantity, 0);
 
+    const yesterdaysRevenue = yesterdaysTrx.reduce((s, t) => s + t.totalAmount, 0);
+    const yesterdaysExpensesSum = yesterdaysExpenses.reduce((s, e) => s + e.amount, 0);
+
+    // Dynamic trend calculations vs yesterday
+    const calcTrend = (curr: number, prev: number): number => {
+      if (prev === 0) return curr > 0 ? 100 : 0;
+      return Math.round(((curr - prev) / prev) * 100);
+    };
+
+    const trxTrend = calcTrend(todaysTrx.length, yesterdaysTrx.length);
+    const revTrend = calcTrend(todaysRevenue, yesterdaysRevenue);
+    const expTrend = calcTrend(todaysExpensesSum, yesterdaysExpensesSum);
+
+    // Range bounds for interactive charts (Revenue Overview & Product Performance)
     let rangeStart: Date;
     let rangeEnd: Date = endOfToday;
 
@@ -102,7 +136,7 @@ export const getDashboardAnalytics = async (req: AuthenticatedRequest, res: Resp
       },
     });
 
-    // Revenue series bucketing
+    // Revenue series bucketing for charts
     const seriesMap = new Map<string, number>();
     if (range === "today") {
       rangeTrx.forEach((t) => {
@@ -144,7 +178,7 @@ export const getDashboardAnalytics = async (req: AuthenticatedRequest, res: Resp
 
     const isSupervisor = req.user?.role === "FIELD_SUPERVISOR";
 
-    // Expense summary by category (empty for Field Supervisor)
+    // Expense summary by category (for Admin)
     const expMap = new Map<string, number>();
     if (!isSupervisor) {
       rangeExpenses.forEach((e) => {
@@ -160,10 +194,13 @@ export const getDashboardAnalytics = async (req: AuthenticatedRequest, res: Resp
     res.json({
       stats: {
         totalClients,
-        todaysTransactionCount: range === "today" ? todaysTrx.length : rangeTrx.length,
-        todaysRevenue: range === "today" ? todaysRevenue : rangeTrx.reduce((s, t) => s + t.totalAmount, 0),
-        todaysExpenses: isSupervisor ? 0 : (range === "today" ? todaysExpensesSum : rangeExpenses.reduce((s, e) => s + e.amount, 0)),
-        todaysQuantity: range === "today" ? todaysQuantity : rangeTrx.reduce((s, t) => s + t.quantity, 0),
+        todaysTransactionCount: todaysTrx.length,
+        todaysRevenue: todaysRevenue,
+        todaysExpenses: isSupervisor ? 0 : todaysExpensesSum,
+        todaysQuantity: todaysQuantity,
+        trxTrend,
+        revTrend,
+        expTrend,
       },
       revenueSeries,
       productSummary,

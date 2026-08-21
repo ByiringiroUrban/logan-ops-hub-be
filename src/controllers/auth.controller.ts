@@ -257,6 +257,7 @@ export const uploadAvatar = async (req: AuthenticatedRequest, res: Response): Pr
           action: "UPDATED_AVATAR",
           target: "Profile Photo",
         },
+        select: { id: true },
       });
     } catch {
       /* ignore activity logging error */
