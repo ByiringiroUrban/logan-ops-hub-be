@@ -2,9 +2,12 @@ import { Response } from "express";
 import { prisma } from "../config/prisma";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { NotificationType, TransactionStatus } from "@prisma/client";
+import { mergeDuplicateTransactions } from "../services/transactionMerge.service";
 
 export const listTransactions = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    await mergeDuplicateTransactions();
+
     const transactions = await prisma.transaction.findMany({
       include: {
         client: { select: { name: true } },
@@ -160,41 +163,103 @@ export const createTransaction = async (req: AuthenticatedRequest, res: Response
     const price = unitPrice !== undefined ? Number(unitPrice) : product.unitPrice;
     const qty = Number(quantity);
     const recorder = recordedBy || req.user?.name || "System";
-    const totalAmount = qty * price;
-    const customId = `TRX-${Date.now().toString().slice(-6)}`;
+    const txDate = date ? new Date(date) : new Date();
 
-    const transaction = await prisma.transaction.create({
-      data: {
-        id: customId,
+    const startOfDay = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(txDate.getFullYear(), txDate.getMonth(), txDate.getDate(), 23, 59, 59, 999);
+
+    // Check if an existing transaction for this (clientId, productId) already exists for today / active date
+    const existingTransaction = await prisma.transaction.findFirst({
+      where: {
         clientId: client.id,
         productId: product.id,
-        quantity: qty,
-        unitPrice: price,
-        totalAmount,
-        date: date ? new Date(date) : new Date(),
-        notes: notes || null,
-        recordedBy: recorder,
-        status: status || TransactionStatus.COMPLETED,
+        date: { gte: startOfDay, lte: endOfDay },
+        status: { not: TransactionStatus.CANCELLED },
       },
+      orderBy: { date: "desc" },
     });
 
-    await prisma.activity.create({
-      data: {
-        actor: recorder,
-        action: "recorded sales transaction for",
-        target: `${client.name} — ${product.name} (${qty} ${product.unit})`,
-      },
-      select: { id: true },
-    });
+    let transaction: any;
 
-    await prisma.notification.create({
-      data: {
-        title: "New transaction recorded",
-        message: `${recorder} recorded ${qty} ${product.unit} of ${product.name} for ${client.name} (${totalAmount.toLocaleString()} RWF).`,
-        type: NotificationType.transaction,
-        targetRole: null,
-      },
-    });
+    if (existingTransaction) {
+      // Accumulate into existing transaction record (same Client + same Product)
+      const newQuantity = existingTransaction.quantity + qty;
+      const newUnitPrice = price;
+      const newTotalAmount = newQuantity * newUnitPrice;
+      const updatedNotes = notes
+        ? existingTransaction.notes
+          ? `${existingTransaction.notes} | ${notes}`
+          : notes
+        : existingTransaction.notes;
+
+      transaction = await prisma.transaction.update({
+        where: { id: existingTransaction.id },
+        data: {
+          quantity: newQuantity,
+          unitPrice: newUnitPrice,
+          totalAmount: newTotalAmount,
+          date: txDate,
+          recordedBy: recorder,
+          notes: updatedNotes,
+          ...(status ? { status } : {}),
+        },
+      });
+
+      await prisma.activity.create({
+        data: {
+          actor: recorder,
+          action: `updated sales record (+${qty} ${product.unit}, Total: ${newQuantity} ${product.unit}) for`,
+          target: `${client.name} — ${product.name}`,
+        },
+        select: { id: true },
+      });
+
+      await prisma.notification.create({
+        data: {
+          title: "Transaction updated",
+          message: `${recorder} added +${qty} ${product.unit} of ${product.name} to existing record for ${client.name} (Total Qty: ${newQuantity}, Total: ${newTotalAmount.toLocaleString()} RWF).`,
+          type: NotificationType.transaction,
+          targetRole: null,
+        },
+      });
+    } else {
+      // Create new transaction for a new/different product
+      const totalAmount = qty * price;
+      const customId = `TRX-${Date.now().toString().slice(-6)}`;
+
+      transaction = await prisma.transaction.create({
+        data: {
+          id: customId,
+          clientId: client.id,
+          productId: product.id,
+          quantity: qty,
+          unitPrice: price,
+          totalAmount,
+          date: txDate,
+          notes: notes || null,
+          recordedBy: recorder,
+          status: status || TransactionStatus.COMPLETED,
+        },
+      });
+
+      await prisma.activity.create({
+        data: {
+          actor: recorder,
+          action: "recorded sales transaction for",
+          target: `${client.name} — ${product.name} (${qty} ${product.unit})`,
+        },
+        select: { id: true },
+      });
+
+      await prisma.notification.create({
+        data: {
+          title: "New transaction recorded",
+          message: `${recorder} recorded ${qty} ${product.unit} of ${product.name} for ${client.name} (${totalAmount.toLocaleString()} RWF).`,
+          type: NotificationType.transaction,
+          targetRole: null,
+        },
+      });
+    }
 
     res.status(201).json({
       id: transaction.id,
