@@ -9,6 +9,8 @@ import documentRoutes from "./document.routes";
 import reportRoutes from "./report.routes";
 import activityRoutes from "./activity.routes";
 import notificationRoutes from "./notification.routes";
+import employeeRoutes from "./employee.routes";
+import saleRoutes from "./sale.routes";
 
 const router = Router();
 
@@ -17,6 +19,8 @@ router.use("/users", userRoutes);
 router.use("/clients", clientRoutes);
 router.use("/products", productRoutes);
 router.use("/transactions", transactionRoutes);
+router.use("/employees", employeeRoutes);
+router.use("/sales", saleRoutes);
 router.use("/expenses", expenseRoutes);
 router.use("/documents", documentRoutes);
 router.use("/reports", reportRoutes);
