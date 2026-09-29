@@ -6,6 +6,7 @@ import path from "path";
 import dotenv from "dotenv";
 import apiRoutes from "./routes";
 import { errorHandler } from "./middleware/errorHandler";
+import { prisma } from "./config/prisma";
 
 dotenv.config();
 
@@ -84,12 +85,19 @@ app.use("/api", apiRoutes);
 app.use(errorHandler);
 
 if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log(`==================================================`);
     console.log(`🚀 Logan Ops Hub Backend API Server Ready!`);
     console.log(`📍 Listening on: http://localhost:${PORT}`);
     console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
     console.log(`==================================================`);
+
+    try {
+      await prisma.$connect();
+      console.log(`[DATABASE] 🟢 Connected to PostgreSQL (Neon) successfully`);
+    } catch (dbErr: any) {
+      console.warn(`[DATABASE] ⚠️ Initial connection note:`, dbErr?.message || dbErr);
+    }
   });
 }
 

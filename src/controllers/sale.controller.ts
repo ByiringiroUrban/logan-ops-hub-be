@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { saleStorage } from "../services/sale.storage";
+import { employeeStorage } from "../services/employee.storage";
 import { AuthenticatedRequest } from "../middleware/auth";
 import { prisma } from "../config/prisma";
 import { NotificationType } from "@prisma/client";
@@ -45,6 +46,10 @@ export const createSale = async (req: AuthenticatedRequest, res: Response): Prom
       paymentStatus,
       saleDate,
       soldBy,
+      employeeId,
+      employeeName,
+      advanceDeducted,
+      deliveryValue,
       notes,
     } = req.body;
 
@@ -59,6 +64,16 @@ export const createSale = async (req: AuthenticatedRequest, res: Response): Prom
 
     const computedTotal = totalAmount !== undefined ? Number(totalAmount) : Number(quantity) * Number(unitPrice);
     const resolvedPaid = amountPaid !== undefined ? Number(amountPaid) : computedTotal;
+
+    // Resolve employee name if employeeId was provided
+    let resolvedEmployeeName = employeeName;
+    if (employeeId && !resolvedEmployeeName) {
+      const emp = employeeStorage.getById(employeeId);
+      if (emp) resolvedEmployeeName = emp.names;
+    }
+
+    const resolvedDeduction = advanceDeducted !== undefined ? Number(advanceDeducted) : 0;
+    const resolvedDeliveryValue = deliveryValue !== undefined ? Number(deliveryValue) : computedTotal;
 
     const newSale = saleStorage.create({
       saleNumber,
@@ -76,16 +91,41 @@ export const createSale = async (req: AuthenticatedRequest, res: Response): Prom
       paymentStatus,
       saleDate: saleDate || new Date().toISOString().slice(0, 10),
       soldBy: recordedSoldBy,
+      employeeId: employeeId || undefined,
+      employeeName: resolvedEmployeeName || undefined,
+      advanceDeducted: resolvedDeduction > 0 ? resolvedDeduction : undefined,
+      deliveryValue: resolvedDeliveryValue,
       notes,
     });
 
     const actor = req.user?.name || recordedSoldBy;
+
+    // If an employee brought this delivery and had a fixed advance deduction, record it in employee advance ledger!
+    if (employeeId && resolvedDeduction > 0) {
+      try {
+        employeeStorage.recordDeduction(employeeId, {
+          deductionAmount: resolvedDeduction,
+          deliveryValue: computedTotal, // Full value of delivery/materials
+          materialDescription: newSale.productName,
+          saleId: newSale.id,
+          saleNumber: newSale.saleNumber,
+          notes: notes || `Advance deduction for sale/delivery ${newSale.saleNumber}`,
+          recordedBy: actor,
+          date: newSale.saleDate,
+        });
+      } catch (err) {
+        console.error("Failed to link advance deduction to employee:", err);
+      }
+    }
+
     try {
       await prisma.activity.create({
         data: {
           actor,
           action: "recorded a new sale",
-          target: `${newSale.saleNumber} - ${newSale.productName} to ${newSale.customerName}`,
+          target: `${newSale.saleNumber} - ${newSale.productName} to ${newSale.customerName}${
+            resolvedEmployeeName ? ` (Delivered by ${resolvedEmployeeName})` : ""
+          }`,
         },
       });
 

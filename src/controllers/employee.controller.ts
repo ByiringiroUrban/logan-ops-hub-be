@@ -146,3 +146,122 @@ export const deleteEmployee = async (req: AuthenticatedRequest, res: Response): 
     res.status(500).json({ error: error.message || "Failed to delete employee" });
   }
 };
+
+export const giveAdvance = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    const { amount, notes, date, paymentMethod } = req.body;
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      res.status(400).json({ error: "Advance amount must be a positive number." });
+      return;
+    }
+
+    const recordedBy = req.user?.name || "Management";
+    const result = employeeStorage.recordAdvance(id, {
+      amount: numAmount,
+      notes,
+      date,
+      paymentMethod,
+      recordedBy,
+    });
+
+    if (!result) {
+      res.status(404).json({ error: "Employee not found" });
+      return;
+    }
+
+    try {
+      await prisma.activity.create({
+        data: {
+          actor: recordedBy,
+          action: `issued an advance of ${numAmount.toLocaleString()} RWF to`,
+          target: `${result.employee.names} (New balance: ${result.employee.advanceBalance?.toLocaleString()} RWF)`,
+        },
+      });
+
+      await prisma.notification.create({
+        data: {
+          title: "Employee Advance Recorded",
+          message: `${recordedBy} granted an advance of ${numAmount.toLocaleString()} RWF to ${result.employee.names}.`,
+          type: NotificationType.system,
+        },
+      });
+    } catch {
+      // Continue
+    }
+
+    res.status(201).json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to record employee advance" });
+  }
+};
+
+export const recordDeliveryDeduction = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    const { deductionAmount, deliveryValue, materialDescription, notes, date, saleId, saleNumber } = req.body;
+    const numDeduction = Number(deductionAmount) || 0;
+    const numDelivery = Number(deliveryValue) || 0;
+
+    if (numDelivery <= 0 && numDeduction <= 0) {
+      res.status(400).json({ error: "Please provide delivery value or deduction amount." });
+      return;
+    }
+
+    const recordedBy = req.user?.name || "Management";
+    const result = employeeStorage.recordDeduction(id, {
+      deductionAmount: numDeduction,
+      deliveryValue: numDelivery,
+      materialDescription,
+      saleId,
+      saleNumber,
+      notes,
+      recordedBy,
+      date,
+    });
+
+    if (!result) {
+      res.status(404).json({ error: "Employee not found" });
+      return;
+    }
+
+    try {
+      await prisma.activity.create({
+        data: {
+          actor: recordedBy,
+          action: `recorded delivery (${numDelivery.toLocaleString()} RWF) and advance deduction (${numDeduction.toLocaleString()} RWF) for`,
+          target: `${result.employee.names} (Remaining advance: ${result.employee.advanceBalance?.toLocaleString()} RWF)`,
+        },
+      });
+    } catch {
+      // Continue
+    }
+
+    res.status(201).json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to record advance deduction" });
+  }
+};
+
+export const getEmployeeAdvances = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const id = String(req.params.id);
+    const emp = employeeStorage.getById(id);
+    if (!emp) {
+      res.status(404).json({ error: "Employee not found" });
+      return;
+    }
+    res.json({
+      employeeId: emp.id,
+      employeeName: emp.names,
+      totalAdvance: emp.totalAdvance || 0,
+      totalAdvanceDeducted: emp.totalAdvanceDeducted || 0,
+      advanceBalance: emp.advanceBalance || 0,
+      totalDeliveriesValue: emp.totalDeliveriesValue || 0,
+      history: emp.advanceHistory || [],
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Failed to fetch employee advances" });
+  }
+};

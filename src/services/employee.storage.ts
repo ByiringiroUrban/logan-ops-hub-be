@@ -1,6 +1,23 @@
 import fs from "fs";
 import path from "path";
 
+export interface AdvanceLedgerEntry {
+  id: string;
+  employeeId: string;
+  type: "ADVANCE_GIVEN" | "DELIVERY_DEDUCTION";
+  date: string;
+  amount: number; // For ADVANCE_GIVEN: advance added (+). For DELIVERY_DEDUCTION: fixed deduction amount from advance (-)
+  deliveryValue?: number; // Full value of materials / stones / deliveries brought by employee (e.g. 45,000 RWF)
+  materialDescription?: string;
+  saleId?: string;
+  saleNumber?: string;
+  balanceAfter: number; // Remaining advance balance after this transaction (e.g. 90,000 RWF)
+  paymentMethod?: string;
+  notes?: string;
+  recordedBy: string;
+  createdAt: string;
+}
+
 export interface StoredEmployee {
   id: string;
   names: string;
@@ -13,6 +30,11 @@ export interface StoredEmployee {
   status: "ACTIVE" | "INACTIVE" | "ON_LEAVE";
   joinedDate: string;
   notes?: string;
+  totalAdvance?: number; // Cumulative total advances granted
+  totalAdvanceDeducted?: number; // Cumulative total advance deductions
+  advanceBalance?: number; // Current remaining advance balance (totalAdvance - totalAdvanceDeducted)
+  totalDeliveriesValue?: number; // Cumulative value of materials/deliveries brought by this employee
+  advanceHistory?: AdvanceLedgerEntry[];
   createdAt: string;
 }
 
@@ -106,9 +128,32 @@ export const employeeStorage = {
     try {
       ensureFileExists();
       const raw = fs.readFileSync(filePath, "utf8");
-      return JSON.parse(raw);
+      const list: StoredEmployee[] = JSON.parse(raw);
+      return list.map((e) => {
+        const totalAdvance = Number(e.totalAdvance) || 0;
+        const totalAdvanceDeducted = Number(e.totalAdvanceDeducted) || 0;
+        const advanceBalance =
+          e.advanceBalance !== undefined
+            ? Number(e.advanceBalance)
+            : Math.max(0, totalAdvance - totalAdvanceDeducted);
+        return {
+          ...e,
+          totalAdvance,
+          totalAdvanceDeducted,
+          advanceBalance,
+          totalDeliveriesValue: Number(e.totalDeliveriesValue) || 0,
+          advanceHistory: Array.isArray(e.advanceHistory) ? e.advanceHistory : [],
+        };
+      });
     } catch {
-      return initialEmployees;
+      return initialEmployees.map((e) => ({
+        ...e,
+        totalAdvance: 0,
+        totalAdvanceDeducted: 0,
+        advanceBalance: 0,
+        totalDeliveriesValue: 0,
+        advanceHistory: [],
+      }));
     }
   },
 
@@ -132,6 +177,12 @@ export const employeeStorage = {
       status: data.status || "ACTIVE",
       joinedDate: data.joinedDate || new Date().toISOString().slice(0, 10),
       notes: data.notes?.trim() || undefined,
+      totalAdvance: Number(data.totalAdvance) || 0,
+      totalAdvanceDeducted: Number(data.totalAdvanceDeducted) || 0,
+      advanceBalance:
+        Number(data.totalAdvance || 0) - Number(data.totalAdvanceDeducted || 0),
+      totalDeliveriesValue: Number(data.totalDeliveriesValue) || 0,
+      advanceHistory: data.advanceHistory || [],
       createdAt: new Date().toISOString(),
     };
     list.unshift(newEmployee);
@@ -146,15 +197,134 @@ export const employeeStorage = {
     if (idx === -1) return null;
 
     const current = list[idx];
+    const totalAdvance =
+      patch.totalAdvance !== undefined ? Number(patch.totalAdvance) : current.totalAdvance || 0;
+    const totalAdvanceDeducted =
+      patch.totalAdvanceDeducted !== undefined
+        ? Number(patch.totalAdvanceDeducted)
+        : current.totalAdvanceDeducted || 0;
+    const advanceBalance =
+      patch.advanceBalance !== undefined
+        ? Number(patch.advanceBalance)
+        : Math.max(0, totalAdvance - totalAdvanceDeducted);
+
     const updated: StoredEmployee = {
       ...current,
       ...patch,
+      totalAdvance,
+      totalAdvanceDeducted,
+      advanceBalance,
       id: current.id,
       createdAt: current.createdAt,
     };
     list[idx] = updated;
     fs.writeFileSync(filePath, JSON.stringify(list, null, 2), "utf8");
     return updated;
+  },
+
+  recordAdvance(
+    employeeId: string,
+    data: { amount: number; notes?: string; recordedBy?: string; date?: string; paymentMethod?: string }
+  ): { employee: StoredEmployee; entry: AdvanceLedgerEntry } | null {
+    ensureFileExists();
+    const list = this.getAll();
+    const idx = list.findIndex((e) => e.id === employeeId);
+    if (idx === -1) return null;
+
+    const emp = list[idx];
+    const amount = Number(data.amount) || 0;
+    const prevTotal = Number(emp.totalAdvance) || 0;
+    const prevDeducted = Number(emp.totalAdvanceDeducted) || 0;
+    const newTotal = prevTotal + amount;
+    const newBalance = Math.max(0, newTotal - prevDeducted);
+
+    const history = Array.isArray(emp.advanceHistory) ? [...emp.advanceHistory] : [];
+    const entry: AdvanceLedgerEntry = {
+      id: `adv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      employeeId,
+      type: "ADVANCE_GIVEN",
+      date: data.date || new Date().toISOString().slice(0, 10),
+      amount,
+      balanceAfter: newBalance,
+      paymentMethod: data.paymentMethod || "CASH",
+      notes: data.notes?.trim() || undefined,
+      recordedBy: data.recordedBy?.trim() || "Boss / Management",
+      createdAt: new Date().toISOString(),
+    };
+
+    history.unshift(entry);
+
+    const updated: StoredEmployee = {
+      ...emp,
+      totalAdvance: newTotal,
+      advanceBalance: newBalance,
+      advanceHistory: history,
+    };
+
+    list[idx] = updated;
+    fs.writeFileSync(filePath, JSON.stringify(list, null, 2), "utf8");
+    return { employee: updated, entry };
+  },
+
+  recordDeduction(
+    employeeId: string,
+    data: {
+      deductionAmount: number;
+      deliveryValue: number;
+      materialDescription?: string;
+      saleId?: string;
+      saleNumber?: string;
+      notes?: string;
+      recordedBy?: string;
+      date?: string;
+    }
+  ): { employee: StoredEmployee; entry: AdvanceLedgerEntry } | null {
+    ensureFileExists();
+    const list = this.getAll();
+    const idx = list.findIndex((e) => e.id === employeeId);
+    if (idx === -1) return null;
+
+    const emp = list[idx];
+    const deduction = Number(data.deductionAmount) || 0;
+    const deliveryVal = Number(data.deliveryValue) || 0;
+    const prevTotal = Number(emp.totalAdvance) || 0;
+    const prevDeducted = Number(emp.totalAdvanceDeducted) || 0;
+    const prevDeliveries = Number(emp.totalDeliveriesValue) || 0;
+
+    const newDeducted = prevDeducted + deduction;
+    const newBalance = Math.max(0, prevTotal - newDeducted);
+    const newDeliveries = prevDeliveries + deliveryVal;
+
+    const history = Array.isArray(emp.advanceHistory) ? [...emp.advanceHistory] : [];
+    const entry: AdvanceLedgerEntry = {
+      id: `adv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      employeeId,
+      type: "DELIVERY_DEDUCTION",
+      date: data.date || new Date().toISOString().slice(0, 10),
+      amount: deduction, // Amount deducted from advance
+      deliveryValue: deliveryVal, // Full value of materials / stones brought by employee
+      materialDescription: data.materialDescription?.trim() || undefined,
+      saleId: data.saleId,
+      saleNumber: data.saleNumber,
+      balanceAfter: newBalance,
+      notes: data.notes?.trim() || undefined,
+      recordedBy: data.recordedBy?.trim() || "Boss / Management",
+      createdAt: new Date().toISOString(),
+    };
+
+    history.unshift(entry);
+
+    const updated: StoredEmployee = {
+      ...emp,
+      totalAdvanceDeducted: newDeducted,
+      advanceBalance: newBalance,
+      totalDeliveriesValue: newDeliveries,
+      advanceHistory: history,
+    };
+
+    list[idx] = updated;
+    fs.writeFileSync(filePath, JSON.stringify(list, null, 2), "utf8");
+    return { employee: updated, entry };
   },
 
   delete(id: string): boolean {

@@ -18,6 +18,10 @@ export interface StoredSale {
   paymentStatus: "PAID" | "PENDING" | "PARTIAL";
   saleDate: string;
   soldBy: string;
+  employeeId?: string; // Employee who brought the delivery/materials
+  employeeName?: string;
+  advanceDeducted?: number; // Specific fixed amount deducted from employee's advance balance
+  deliveryValue?: number; // Full value of delivery/materials
   notes?: string;
   createdAt: string;
 }
@@ -140,6 +144,10 @@ export const saleStorage = {
       paymentStatus: data.paymentStatus || (amountPaid >= totalAmount ? "PAID" : amountPaid > 0 ? "PARTIAL" : "PENDING"),
       saleDate: data.saleDate || new Date().toISOString().slice(0, 10),
       soldBy: data.soldBy?.trim() || "Field Officer",
+      employeeId: data.employeeId || undefined,
+      employeeName: data.employeeName?.trim() || undefined,
+      advanceDeducted: data.advanceDeducted !== undefined ? Number(data.advanceDeducted) : undefined,
+      deliveryValue: data.deliveryValue !== undefined ? Number(data.deliveryValue) : totalAmount,
       notes: data.notes?.trim() || undefined,
       createdAt: new Date().toISOString(),
     };
@@ -152,7 +160,7 @@ export const saleStorage = {
   update(id: string, patch: Partial<StoredSale>): StoredSale | null {
     ensureFileExists();
     const list = this.getAll();
-    const idx = list.findIndex((s) => s.id === id);
+    const idx = list.findIndex((e) => e.id === id);
     if (idx === -1) return null;
 
     const current = list[idx];
@@ -168,6 +176,12 @@ export const saleStorage = {
       unitPrice,
       totalAmount,
       amountPaid,
+      employeeId: patch.employeeId !== undefined ? patch.employeeId : current.employeeId,
+      employeeName: patch.employeeName !== undefined ? patch.employeeName : current.employeeName,
+      advanceDeducted:
+        patch.advanceDeducted !== undefined ? Number(patch.advanceDeducted) : current.advanceDeducted,
+      deliveryValue:
+        patch.deliveryValue !== undefined ? Number(patch.deliveryValue) : current.deliveryValue ?? totalAmount,
       id: current.id,
       createdAt: current.createdAt,
     };
