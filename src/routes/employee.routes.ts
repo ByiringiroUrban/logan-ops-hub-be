@@ -9,22 +9,27 @@ import {
   recordDeliveryDeduction,
   getEmployeeAdvances,
 } from "../controllers/employee.controller";
-import { authenticateToken } from "../middleware/auth";
+import { authenticateToken, requireRole } from "../middleware/auth";
+import { Role } from "@prisma/client";
 
 const router = Router();
 
 router.use(authenticateToken);
 
+// Read-only endpoints (accessible by ADMIN and FIELD_SUPERVISOR)
 router.get("/", listEmployees);
 router.get("/:id", getEmployee);
-router.post("/", createEmployee);
-router.put("/:id", updateEmployee);
-router.patch("/:id", updateEmployee);
-router.delete("/:id", deleteEmployee);
-
-// Advance Management Endpoints
-router.post("/:id/advance", giveAdvance);
-router.post("/:id/deduction", recordDeliveryDeduction);
 router.get("/:id/advances", getEmployeeAdvances);
 
+// Mutation / CRUD endpoints (ADMIN only)
+router.post("/", requireRole(Role.ADMIN), createEmployee);
+router.put("/:id", requireRole(Role.ADMIN), updateEmployee);
+router.patch("/:id", requireRole(Role.ADMIN), updateEmployee);
+router.delete("/:id", requireRole(Role.ADMIN), deleteEmployee);
+
+// Advance Management Endpoints (ADMIN only)
+router.post("/:id/advance", requireRole(Role.ADMIN), giveAdvance);
+router.post("/:id/deduction", requireRole(Role.ADMIN), recordDeliveryDeduction);
+
 export default router;
+
