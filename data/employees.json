@@ -12,10 +12,25 @@
     "joinedDate": "2026-09-30",
     "notes": "A0",
     "totalAdvance": 200000,
-    "totalAdvanceDeducted": 30000,
-    "advanceBalance": 170000,
-    "totalDeliveriesValue": 170000,
+    "totalAdvanceDeducted": 130000,
+    "advanceBalance": 70000,
+    "totalDeliveriesValue": 177500,
     "advanceHistory": [
+      {
+        "id": "adv-1790780347937-851",
+        "employeeId": "emp-1790756574001-403",
+        "type": "DELIVERY_DEDUCTION",
+        "date": "2026-09-30",
+        "amount": 100000,
+        "deliveryValue": 7500,
+        "materialDescription": "AMABUYE Manini",
+        "saleId": "sale-1790780347931-827",
+        "saleNumber": "SAL-2026-006",
+        "balanceAfter": 70000,
+        "notes": "Advance deduction for sale/delivery SAL-2026-006",
+        "recordedBy": "Urban Byiringiro",
+        "createdAt": "2026-09-30T14:59:07.937Z"
+      },
       {
         "id": "adv-1790758290545-721",
         "employeeId": "emp-1790756574001-403",
