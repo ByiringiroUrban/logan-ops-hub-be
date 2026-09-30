@@ -180,3 +180,76 @@ model PasswordReset {
 
   @@map("password_resets")
 }
+
+
+model Employee {
+  id                   String               @id @default(cuid())
+  names                String
+  nationalId           String
+  phone                String
+  address              String
+  role                 String
+  department           String
+  salary               Float?
+  status               String               @default("ACTIVE")
+  joinedDate           String
+  notes                String?
+  totalAdvance         Float                @default(0)
+  totalAdvanceDeducted Float                @default(0)
+  advanceBalance       Float                @default(0)
+  totalDeliveriesValue Float                @default(0)
+  createdAt            DateTime             @default(now())
+  advanceHistory       AdvanceLedgerEntry[]
+  sales                Sale[]
+
+  @@map("employees")
+}
+
+model AdvanceLedgerEntry {
+  id                  String   @id @default(cuid())
+  employeeId          String
+  employee            Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type                String
+  date                String
+  amount              Float
+  deliveryValue       Float?
+  materialDescription String?
+  saleId              String?
+  saleNumber          String?
+  balanceAfter        Float
+  paymentMethod       String?
+  notes               String?
+  recordedBy          String
+  createdAt           DateTime @default(now())
+
+  @@map("advance_ledger_entries")
+}
+
+model Sale {
+  id              String    @id @default(cuid())
+  saleNumber      String
+  customerName    String
+  customerPhone   String?
+  customerAddress String?
+  clientId        String?
+  productName     String
+  productId       String?
+  quantity        Float
+  unitPrice       Float
+  totalAmount     Float
+  amountPaid      Float
+  paymentMethod   String
+  paymentStatus   String
+  saleDate        String
+  soldBy          String
+  employeeId      String?
+  employee        Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  employeeName    String?
+  advanceDeducted Float?
+  deliveryValue   Float?
+  notes           String?
+  createdAt       DateTime  @default(now())
+
+  @@map("sales")
+}
+

@@ -7,7 +7,7 @@ import { NotificationType } from "@prisma/client";
 
 export const listSales = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const list = saleStorage.getAll();
+    const list = await saleStorage.getAll();
     res.json(list);
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to fetch sales" });
@@ -17,7 +17,7 @@ export const listSales = async (req: AuthenticatedRequest, res: Response): Promi
 export const getSale = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const id = String(req.params.id);
-    const sale = saleStorage.getById(id);
+    const sale = await saleStorage.getById(id);
     if (!sale) {
       res.status(404).json({ error: "Sale record not found" });
       return;
@@ -68,14 +68,14 @@ export const createSale = async (req: AuthenticatedRequest, res: Response): Prom
     // Resolve employee name if employeeId was provided
     let resolvedEmployeeName = employeeName;
     if (employeeId && !resolvedEmployeeName) {
-      const emp = employeeStorage.getById(employeeId);
+      const emp = await employeeStorage.getById(employeeId);
       if (emp) resolvedEmployeeName = emp.names;
     }
 
     const resolvedDeduction = advanceDeducted !== undefined ? Number(advanceDeducted) : 0;
     const resolvedDeliveryValue = deliveryValue !== undefined ? Number(deliveryValue) : computedTotal;
 
-    const newSale = saleStorage.create({
+    const newSale = await saleStorage.create({
       saleNumber,
       customerName,
       customerPhone,
@@ -91,9 +91,9 @@ export const createSale = async (req: AuthenticatedRequest, res: Response): Prom
       paymentStatus,
       saleDate: saleDate || new Date().toISOString().slice(0, 10),
       soldBy: recordedSoldBy,
-      employeeId: employeeId || undefined,
-      employeeName: resolvedEmployeeName || undefined,
-      advanceDeducted: resolvedDeduction > 0 ? resolvedDeduction : undefined,
+      employeeId: employeeId || null,
+      employeeName: resolvedEmployeeName || null,
+      advanceDeducted: resolvedDeduction > 0 ? resolvedDeduction : null,
       deliveryValue: resolvedDeliveryValue,
       notes,
     });
@@ -103,7 +103,7 @@ export const createSale = async (req: AuthenticatedRequest, res: Response): Prom
     // If an employee brought this delivery and had a fixed advance deduction, record it in employee advance ledger!
     if (employeeId && resolvedDeduction > 0) {
       try {
-        employeeStorage.recordDeduction(employeeId, {
+        await employeeStorage.recordDeduction(employeeId, {
           deductionAmount: resolvedDeduction,
           deliveryValue: computedTotal, // Full value of delivery/materials
           materialDescription: newSale.productName,
@@ -155,7 +155,7 @@ export const updateSale = async (req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
-    const updated = saleStorage.update(id, req.body);
+    const updated = await saleStorage.update(id, req.body);
     if (!updated) {
       res.status(404).json({ error: "Sale record not found" });
       return;
@@ -183,13 +183,13 @@ export const updateSale = async (req: AuthenticatedRequest, res: Response): Prom
 export const deleteSale = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const id = String(req.params.id);
-    const existing = saleStorage.getById(id);
+    const existing = await saleStorage.getById(id);
     if (!existing) {
       res.status(404).json({ error: "Sale record not found" });
       return;
     }
 
-    const success = saleStorage.delete(id);
+    const success = await saleStorage.delete(id);
     if (!success) {
       res.status(404).json({ error: "Sale record not found" });
       return;

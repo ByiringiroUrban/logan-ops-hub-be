@@ -6,7 +6,7 @@ import { NotificationType } from "@prisma/client";
 
 export const listEmployees = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const list = employeeStorage.getAll();
+    const list = await employeeStorage.getAll();
     res.json(list);
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to fetch employees" });
@@ -16,7 +16,7 @@ export const listEmployees = async (req: AuthenticatedRequest, res: Response): P
 export const getEmployee = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const id = String(req.params.id);
-    const employee = employeeStorage.getById(id);
+    const employee = await employeeStorage.getById(id);
     if (!employee) {
       res.status(404).json({ error: "Employee not found" });
       return;
@@ -39,14 +39,14 @@ export const createEmployee = async (req: AuthenticatedRequest, res: Response): 
       return;
     }
 
-    const newEmployee = employeeStorage.create({
+    const newEmployee = await employeeStorage.create({
       names,
       nationalId,
       phone,
       address,
       role: role || "Field Worker",
       department: department || "Field Operations",
-      salary: salary ? Number(salary) : undefined,
+      salary: salary ? Number(salary) : null,
       status: status || "ACTIVE",
       joinedDate: joinedDate || new Date().toISOString().slice(0, 10),
       notes,
@@ -82,13 +82,13 @@ export const createEmployee = async (req: AuthenticatedRequest, res: Response): 
 export const updateEmployee = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const id = String(req.params.id);
-    const existing = employeeStorage.getById(id);
+    const existing = await employeeStorage.getById(id);
     if (!existing) {
       res.status(404).json({ error: "Employee not found" });
       return;
     }
 
-    const updated = employeeStorage.update(id, req.body);
+    const updated = await employeeStorage.update(id, req.body);
     if (!updated) {
       res.status(404).json({ error: "Employee not found" });
       return;
@@ -116,13 +116,13 @@ export const updateEmployee = async (req: AuthenticatedRequest, res: Response): 
 export const deleteEmployee = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const id = String(req.params.id);
-    const existing = employeeStorage.getById(id);
+    const existing = await employeeStorage.getById(id);
     if (!existing) {
       res.status(404).json({ error: "Employee not found" });
       return;
     }
 
-    const success = employeeStorage.delete(id);
+    const success = await employeeStorage.delete(id);
     if (!success) {
       res.status(404).json({ error: "Employee not found" });
       return;
@@ -158,7 +158,7 @@ export const giveAdvance = async (req: AuthenticatedRequest, res: Response): Pro
     }
 
     const recordedBy = req.user?.name || "Management";
-    const result = employeeStorage.recordAdvance(id, {
+    const result = await employeeStorage.recordAdvance(id, {
       amount: numAmount,
       notes,
       date,
@@ -210,7 +210,7 @@ export const recordDeliveryDeduction = async (req: AuthenticatedRequest, res: Re
     }
 
     const recordedBy = req.user?.name || "Management";
-    const result = employeeStorage.recordDeduction(id, {
+    const result = await employeeStorage.recordDeduction(id, {
       deductionAmount: numDeduction,
       deliveryValue: numDelivery,
       materialDescription,
@@ -247,7 +247,7 @@ export const recordDeliveryDeduction = async (req: AuthenticatedRequest, res: Re
 export const getEmployeeAdvances = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const id = String(req.params.id);
-    const emp = employeeStorage.getById(id);
+    const emp = await employeeStorage.getById(id);
     if (!emp) {
       res.status(404).json({ error: "Employee not found" });
       return;
