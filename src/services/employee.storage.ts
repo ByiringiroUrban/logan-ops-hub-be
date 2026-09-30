@@ -38,7 +38,7 @@ export interface StoredEmployee {
   createdAt: string;
 }
 
-const dataDir = path.join(__dirname, "../../data");
+const dataDir = process.env.VERCEL ? "/tmp" : path.join(__dirname, "../../data");
 const filePath = path.join(dataDir, "employees.json");
 
 const initialEmployees: StoredEmployee[] = [

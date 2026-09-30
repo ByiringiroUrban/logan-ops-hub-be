@@ -26,7 +26,7 @@ export interface StoredSale {
   createdAt: string;
 }
 
-const dataDir = path.join(__dirname, "../../data");
+const dataDir = process.env.VERCEL ? "/tmp" : path.join(__dirname, "../../data");
 const filePath = path.join(dataDir, "sales.json");
 
 const initialSales: StoredSale[] = [
