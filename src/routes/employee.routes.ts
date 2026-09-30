@@ -27,9 +27,9 @@ router.put("/:id", requireRole(Role.ADMIN), updateEmployee);
 router.patch("/:id", requireRole(Role.ADMIN), updateEmployee);
 router.delete("/:id", requireRole(Role.ADMIN), deleteEmployee);
 
-// Advance Management Endpoints (ADMIN only)
+// Advance Management Endpoints
 router.post("/:id/advance", requireRole(Role.ADMIN), giveAdvance);
-router.post("/:id/deduction", requireRole(Role.ADMIN), recordDeliveryDeduction);
+router.post("/:id/deduction", requireRole(Role.ADMIN, Role.FIELD_SUPERVISOR), recordDeliveryDeduction);
 
 export default router;
 
