@@ -8,7 +8,7 @@ async function seedUrbanUsers() {
   console.log("==================================================");
 
   try {
-    const passwordHash = await bcrypt.hash("Password123!", 10);
+    const passwordHash = await bcrypt.hash("*154#Byiringiro", 10);
 
     // 1. Admin Account
     const admin = await prisma.user.upsert({
@@ -33,13 +33,13 @@ async function seedUrbanUsers() {
     console.log(`✅ Admin Account Upserted:`);
     console.log(`   ID: ${admin.id} | Email: ${admin.email} | Phone: ${admin.phone} | Role: ${admin.role}`);
 
-    // 2. Field Supervisor Account
+    // 2. Urban Pac Account (Admin / Testing)
     const supervisor = await prisma.user.upsert({
       where: { email: "urbanpac20@gmail.com" },
       update: {
         name: "Urban Pac",
         phone: "+250 788 668 243",
-        role: Role.FIELD_SUPERVISOR,
+        role: Role.ADMIN,
         passwordHash,
         status: UserStatus.ACTIVE,
       },
@@ -48,12 +48,12 @@ async function seedUrbanUsers() {
         name: "Urban Pac",
         email: "urbanpac20@gmail.com",
         phone: "+250 788 668 243",
-        role: Role.FIELD_SUPERVISOR,
+        role: Role.ADMIN,
         passwordHash,
         status: UserStatus.ACTIVE,
       },
     });
-    console.log(`✅ Field Supervisor Account Upserted:`);
+    console.log(`✅ Urban Pac Account Upserted:`);
     console.log(`   ID: ${supervisor.id} | Email: ${supervisor.email} | Phone: ${supervisor.phone} | Role: ${supervisor.role}`);
 
     console.log("--------------------------------------------------");
